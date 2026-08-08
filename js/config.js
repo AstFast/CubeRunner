@@ -63,9 +63,9 @@ window.applyConfig = function () {
   if (p.has('boostease')) { const v = p.get('boostease'); cfg.boostEase = !(v === '0' || v.toLowerCase() === 'false'); }
   cfg.boostEaseRate = Math.max(1e-6, num('boosteaserate', cfg.boostEaseRate));
   cfg.boostDecay    = num('boostdecay',     cfg.boostDecay);
-  // skin 参数：URL 直接传图片地址则包装为 'url:'
+  // skin 参数：内置名白名单优先；显式 'url:' 前缀；其余一律视为图片 URL（避免裸值命中内置名导致皮肤错乱）
   const s = p.get('skin');
-  if (s) cfg.skin = s.startsWith('url:') || BUILTIN_SKINS[s] ? s : 'url:' + s;
+  if (s) cfg.skin = Object.prototype.hasOwnProperty.call(BUILTIN_SKINS, s) ? s : (s.startsWith('url:') ? s : 'url:' + s);
   // 若 skin 是图片 URL，预加载
   if (cfg.skin && cfg.skin.startsWith('url:')) loadSkin(cfg.skin.slice(4));
   showConfigBanner();
@@ -75,26 +75,37 @@ window.applyConfig = function () {
 // 不设 crossOrigin：本项目仅 drawImage 显示、无 getImageData/toDataURL，跨域图片无需 CORS 即可显示；
 // 设置 crossOrigin 反而会让不支持 CORS 的图床（如 img.cdn1.vip）直接加载失败。
 // 警告：跨域图会使 canvas 污染，未来若加截图/分享导出（toDataURL/getImageData）会抛 SecurityError。
+// 皮肤加载请求计数：丢弃过期的异步回调（连续切换皮肤时，旧图片的 onload/onerror 不再覆盖新状态）
+let skinReq = 0;
 window.loadSkin = function (url) {
-  skinImg = new Image();
-  skinImg.referrerPolicy = 'no-referrer';   // 绕过图床的 Referer 防盗链（白名单式防盗链仍可能失败）
-  skinImg.onload = () => {
+  const req = ++skinReq;
+  const img = new Image();   // 局部引用，回调不依赖被后续请求替换的全局 skinImg
+  img.referrerPolicy = 'no-referrer';   // 绕过图床的 Referer 防盗链（白名单式防盗链仍可能失败）
+  img.onload = () => {
+    if (req !== skinReq) return;   // 期间有更新的皮肤请求，丢弃过期回调
+    if (!img.naturalWidth) {       // 极少数解码异常（onload 但尺寸为 0）：按失败处理
+      skinReady = false; skinImg = null; skinCanvas = null;
+      if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
+      return;
+    }
+    skinImg = img;
     skinReady = true;
     // 预渲染到离屏 canvas（2倍尺寸保证清晰），避免每帧缩放大图
     const sz = 88;
     skinCanvas = document.createElement('canvas');
     skinCanvas.width = sz; skinCanvas.height = sz;
     const sc = skinCanvas.getContext('2d');
-    const iw = skinImg.naturalWidth, ih = skinImg.naturalHeight;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
     const scale = Math.max(sz / iw, sz / ih);   // cover 模式
     const dw = iw * scale, dh = ih * scale;
-    sc.drawImage(skinImg, (sz - dw) / 2, (sz - dh) / 2, dw, dh);
+    sc.drawImage(img, (sz - dw) / 2, (sz - dh) / 2, dw, dh);
   };
-  skinImg.onerror = () => {
+  img.onerror = () => {
+    if (req !== skinReq) return;
     skinReady = false; skinImg = null; skinCanvas = null;
     if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
   };
-  skinImg.src = url;
+  img.src = url;
 };
 
 // 在开始页显示当前生效的自定义参数

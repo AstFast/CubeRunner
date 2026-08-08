@@ -635,7 +635,8 @@
       name.className = 'skin-name'; name.textContent = BUILTIN_SKINS[k];
       chip.appendChild(name);
       chip.addEventListener('click', () => {
-        cfg.skin = k; skinReady = false; skinImg = null;
+        skinReq++;   // 使挂起的皮肤图片回调失效，避免残留 onload/onerror 污染状态
+        cfg.skin = k; skinReady = false; skinImg = null; skinCanvas = null;
         document.querySelectorAll('.skin-chip').forEach(el => el.classList.remove('active'));
         chip.classList.add('active');
         document.getElementById('skinUrlInput').value = '';
@@ -648,12 +649,24 @@
     const urlBtn = document.getElementById('skinUrlBtn');
     if (urlBtn) {
       urlBtn.addEventListener('click', () => {
-        const url = urlInput.value.trim();
-        if (!url) return;
-        cfg.skin = 'url:' + url;
-        loadSkin(url);
+        const val = urlInput.value.trim();
+        if (!val) return;
+        // 输入恰为内置皮肤名：直接切到内置皮肤（与点 chip 一致，避免加载 'star' 之类 404 后行为不一致）
+        if (Object.prototype.hasOwnProperty.call(BUILTIN_SKINS, val)) {
+          skinReq++;   // 使挂起的皮肤图片回调失效
+          cfg.skin = val; skinReady = false; skinImg = null; skinCanvas = null;
+          document.querySelectorAll('.skin-chip').forEach(el => el.classList.remove('active'));
+          const chip = grid.querySelector('.skin-chip[data-skin="' + val + '"]');
+          if (chip) chip.classList.add('active');
+          updateUrlParam('skin', val);
+          floatMsg('皮肤已应用', player.x + player.w/2, 100, '#7fd8ff');
+          urlInput.blur();
+          return;
+        }
+        cfg.skin = 'url:' + val;
+        loadSkin(val);
         document.querySelectorAll('.skin-chip').forEach(el => el.classList.remove('active'));
-        updateUrlParam('skin', url);
+        updateUrlParam('skin', val);
         floatMsg('皮肤已应用', player.x + player.w/2, 100, '#7fd8ff');
         urlInput.blur();   // 收起软键盘，避免遮挡游戏区域
       });
