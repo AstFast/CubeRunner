@@ -47,6 +47,9 @@ build/
 .parcel-cache/
 *.tsbuildinfo
 
+# ===== 工具目录 =====
+.reasonix/
+
 # ===== 临时 / 备份文件 =====
 *.tmp
 *.temp

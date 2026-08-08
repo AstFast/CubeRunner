@@ -8,16 +8,22 @@ window.cfg = {
   speedMax: 13,        // 最大滚动速度
   speedGrow: 0.0014,   // 滚动速度随时间递增系数
   wallStart: 0.25,     // 危险墙初始速度
-  wallGrow: 0.0005,    // 危险墙一次递增系数
-  wallGrow2: 0.0000004,// 危险墙二次递增系数（越往后加速越快）
-  wallMax: 8,          // 危险墙速度上限（防止后期失控）
+  wallGrow: 0.0003,    // 危险墙一次递增系数（仅当 wallEase=false 时使用）
+  wallGrow2: 0.0000004,// 危险墙二次递增系数（仅当 wallEase=false 时使用）
+  wallMax: 2.0,        // 危险墙速度上限（防止后期失控）
+  wallEase: true,      // 危险墙渐近收敛：增长因子随时间递减 → 0，速度平滑逼近上限（后期不再越涨越快）
+  wallEaseRate: 0.0008,// 渐近收敛速率（越大越快逼近上限）
   boostPushBase: 2.6,  // 加速时推墙基础力度
   boostPushGrow: 0.0008,// 推墙力度随时间递增
   boostPushMax: 5.5,   // 推墙力度上限
   boostTimeBase: 20,   // 捡金币加速基础时长（帧）
   boostTimeGrow: 0.004,// 加速时长随时间递增
   boostTimeMax: 48,    // 加速时长上限
-  boostSpeedMul: 1.4,  // 加速时滚动速度倍率（方块加速强度）
+  boostSpeedMul: 1.4,       // 拾取加速基础倍率（随游戏时间递增，见下两个参数）
+  boostSpeedMulGrow: 0.00001, // 加速倍率随游戏时间递增系数
+  boostSpeedMulMax: 1.8,    // 加速倍率上限
+  boostEase: true,      // 拾取加速渐近收敛：推墙/时长/倍率随时间平滑逼近上限（增长因子递减 → 0）
+  boostEaseRate: 0.0005,// 拾取加速渐近收敛速率（越大越快逼近上限）
   boostDecay: 0.6,     // 加速状态衰减速率（每帧减少量）
   skin: ''             // 主角皮肤标识：'' 默认 | 'cat'|'robot'|... 预设 | 'url:xxx' 自定义图片
 };
@@ -41,6 +47,9 @@ window.applyConfig = function () {
   cfg.wallGrow   = num('wallgrow',   cfg.wallGrow);
   cfg.wallGrow2  = num('wallgrow2',  cfg.wallGrow2);
   cfg.wallMax    = num('wallmax',    cfg.wallMax);
+  // wallease 为布尔开关：'0'/'false' 视为关闭（改回线性增长），其余为开启
+  if (p.has('wallease')) { const v = p.get('wallease'); cfg.wallEase = !(v === '0' || v.toLowerCase() === 'false'); }
+  cfg.wallEaseRate = Math.max(1e-6, num('walleaserate', cfg.wallEaseRate));
   cfg.boostPushBase = num('boostpush',      cfg.boostPushBase);
   cfg.boostPushGrow = num('boostpushgrow',  cfg.boostPushGrow);
   cfg.boostPushMax  = num('boostpushmax',   cfg.boostPushMax);
@@ -48,6 +57,11 @@ window.applyConfig = function () {
   cfg.boostTimeGrow = num('boosttimegrow',  cfg.boostTimeGrow);
   cfg.boostTimeMax  = num('boosttimemax',   cfg.boostTimeMax);
   cfg.boostSpeedMul = num('boostspeedmul',  cfg.boostSpeedMul);
+  cfg.boostSpeedMulGrow = num('boostspeedmulgrow', cfg.boostSpeedMulGrow);
+  cfg.boostSpeedMulMax  = num('boostspeedmulmax',  cfg.boostSpeedMulMax);
+  // boostease 为布尔开关：'0'/'false' 视为关闭（改回线性递增），其余为开启
+  if (p.has('boostease')) { const v = p.get('boostease'); cfg.boostEase = !(v === '0' || v.toLowerCase() === 'false'); }
+  cfg.boostEaseRate = Math.max(1e-6, num('boosteaserate', cfg.boostEaseRate));
   cfg.boostDecay    = num('boostdecay',     cfg.boostDecay);
   // skin 参数：URL 直接传图片地址则包装为 'url:'
   const s = p.get('skin');
@@ -86,7 +100,9 @@ window.showConfigBanner = function () {
   if ([...p.keys()].length === 0) return;   // 无参数则不显示
   const items = [];
   if (cfg.skin) items.push('皮肤: ' + (cfg.skin.startsWith('url:') ? '自定义图片' : BUILTIN_SKINS[cfg.skin] ? '预设(' + cfg.skin + ')' : cfg.skin));
-  const numKeys = ['gravity','jump','jumps','speed','speedmax','wallstart','wallgrow','wallgrow2','wallmax','boostpush','boosttime','boostspeedmul','boostdecay'];
+  if (p.has('wallease')) items.push('wallease=' + p.get('wallease'));
+  if (p.has('boostease')) items.push('boostease=' + p.get('boostease'));
+  const numKeys = ['gravity','jump','jumps','speed','speedmax','speedgrow','wallstart','wallgrow','wallgrow2','wallmax','walleaserate','boostpush','boostpushgrow','boostpushmax','boosttime','boosttimegrow','boosttimemax','boostspeedmul','boostspeedmulgrow','boostspeedmulmax','boosteaserate','boostdecay'];
   for (const k of numKeys) {
     if (p.has(k)) items.push(`${k}=${p.get(k)}`);
   }

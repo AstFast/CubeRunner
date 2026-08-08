@@ -1,5 +1,9 @@
-* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { height: 100%; overflow: hidden; background: #0a0a1a; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+html, body {
+  height: 100%; overflow: hidden; background: #0a0a1a; font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  overscroll-behavior: none;   /* 防移动端下拉刷新/边缘回弹（不动 touch-action，避免吃掉 overlay 滚动） */
+}
+input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }  /* 输入框保持可编辑选择 */
 #wrap {
   position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle at 50% 30%, #1a1a3e 0%, #0a0a1a 70%);
@@ -23,6 +27,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: 
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   color: #fff; text-align: center; padding: 24px; background: rgba(8,8,20,.82);
   transition: opacity .3s; overflow-y: auto;
+  overscroll-behavior: contain;   /* 允许内部滚动但不触发页面级刷新 */
+  touch-action: pan-y;            /* 允许纵向滚动，禁用缩放 */
 }
 .overlay.hidden { opacity: 0; pointer-events: none; }
 .title { font-size: clamp(40px, 9vw, 84px); font-weight: 800; letter-spacing: 2px;
@@ -86,3 +92,28 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: 
 }
 .skin-custom-row button:hover { box-shadow: 0 4px 14px rgba(127,216,255,.5); }
 .skin-tip { margin-top: 8px; font-size: 11px; color: #6a6aa8; max-width: 420px; line-height: 1.5; }
+
+/* 竖屏提示（建议横屏，可关闭继续竖屏玩） */
+.rotate-hint {
+  position: absolute; inset: 0; z-index: 10; display: flex;
+  align-items: center; justify-content: center;
+  background: rgba(8,8,20,.72);
+  touch-action: none;   /* 提示层无滚动需求，禁缩放/拖动 */
+}
+.rotate-hint.hidden { display: none; }
+.rotate-box {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 30px 38px; border-radius: 20px; text-align: center;
+  background: rgba(20,20,50,.92); border: 1px solid rgba(127,216,255,.35);
+}
+.rotate-icon {
+  width: 26px; height: 44px; border: 3px solid #7fd8ff; border-radius: 7px;
+  position: relative; animation: rotatePulse 1.4s ease-in-out infinite;
+}
+.rotate-icon::before {
+  content: ''; position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%; background: #7fd8ff;
+}
+@keyframes rotatePulse { 0%,100% { transform: rotate(0); } 50% { transform: rotate(90deg); } }
+.rotate-text { color: #d8d8ff; font-size: 15px; }
+.rotate-box .btn { margin-top: 0; }

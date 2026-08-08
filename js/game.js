@@ -5,19 +5,45 @@
   let W = 0, H = 0, DPR = 1;   // 自适应：大屏降 DPR 减少渲染像素
 
   // ------- Layout / responsive -------
-  // 背景渐变缓存（避免每帧 createLinearGradient）
-  let bgSky, bgGround;
+  // 背景/危险墙锯齿离屏位图缓存：渐变与复杂路径只画一次，主循环 drawImage 贴片
+  let bgCanvas = null, wallImg = null, wallImgH = 0;
   function buildGradients() {
-    bgSky = ctx.createLinearGradient(0, 0, 0, H);
-    bgSky.addColorStop(0, '#171736'); bgSky.addColorStop(0.6, '#1f1a44'); bgSky.addColorStop(1, '#2a2150');
-    bgGround = ctx.createLinearGradient(0, H - Math.max(70, H * 0.12), 0, H);
-    bgGround.addColorStop(0, '#3a2f6b'); bgGround.addColorStop(1, '#15102e');
+    bgCanvas = document.createElement('canvas');
+    bgCanvas.width = canvas.width; bgCanvas.height = canvas.height;
+    const bc = bgCanvas.getContext('2d');
+    bc.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const sky = bc.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#171736'); sky.addColorStop(0.6, '#1f1a44'); sky.addColorStop(1, '#2a2150');
+    bc.fillStyle = sky; bc.fillRect(0, 0, W, H);
+    const gy = H - Math.max(70, H * 0.12);
+    const ground = bc.createLinearGradient(0, gy, 0, H);
+    ground.addColorStop(0, '#3a2f6b'); ground.addColorStop(1, '#15102e');
+    bc.fillStyle = ground; bc.fillRect(0, gy, W, H - gy);
+    // 危险墙整体贴图：3 段红色 + 锯齿预渲染成一张（形状固定、仅 x 平移），每帧一次 drawImage
+    // 按物理像素创建，绘制时 scale(DPR) 保证 drawImage 后 1:1 清晰
+    const sh = Math.max(1, Math.floor(gy));
+    wallImgH = sh;
+    const WALL_W = 66;   // 50 墙宽 + 12 锯齿 + 4 余量
+    wallImg = document.createElement('canvas');
+    wallImg.width = Math.ceil(WALL_W * DPR); wallImg.height = Math.ceil(sh * DPR);
+    const sc = wallImg.getContext('2d');
+    sc.scale(DPR, DPR);
+    sc.fillStyle = 'rgba(255,60,60,.2)';    sc.fillRect(0, 0, 15, sh);
+    sc.fillStyle = 'rgba(255,70,70,.85)';   sc.fillRect(15, 0, 20, sh);
+    sc.fillStyle = 'rgba(255,120,120,.95)'; sc.fillRect(35, 0, 15, sh);
+    sc.fillStyle = '#ff4d4d';
+    sc.beginPath();
+    for (let y = 0; y < sh; y += 18) { sc.moveTo(50, y); sc.lineTo(62, y + 9); sc.lineTo(50, y + 18); }
+    sc.fill();
   }
   function resize() {
     W = window.innerWidth; H = window.innerHeight;
     // 自适应 DPR：小屏高分屏用 2 保证清晰，大屏降到 1.5/1 减少渲染像素
     const screenPx = W * H;
     DPR = screenPx > 1600000 ? 1 : (screenPx > 800000 ? 1.5 : Math.min(window.devicePixelRatio || 1, 2));
+    // 物理像素上限：2K/4K 等超高分辨率再降 DPR，避免全屏重绘压垮 GPU（画面略糊但保帧率）
+    const MAX_PX = 2500000;
+    if (W * H * DPR * DPR > MAX_PX) DPR = Math.max(0.5, Math.sqrt(MAX_PX / (W * H)));
     canvas.width = W * DPR; canvas.height = H * DPR;
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -72,8 +98,9 @@
     arr.length = w;
   }
   function addParticle(p) {
-    if (particles.length >= MAX_PARTICLES) particles[particles.length] = p;  // 覆盖式，不 shift
-    else particles.push(p);
+    p.a = 1;   // 新粒子初始透明度（updateParticles 后续维护）
+    if (particles.length >= MAX_PARTICLES) return;   // 满载直接丢弃，避免数组无限增长
+    particles.push(p);
   }
 
   // 浮动提示（暴露给 config.js 用）—— 限制频率避免 DOM 爆炸
@@ -95,12 +122,15 @@
   const scoreValEl = document.getElementById('score').querySelector('.val');  // 缓存，避免每帧查询
   const powerbar = document.getElementById('powerbar');  // 显式缓存道具栏元素
   let lastScore = -1;
+  let lastBarHTML = '';
   function updatePowerbar() {
     let html = '';
     if (shield > 0)  html += `<div class="pchip shield"><span class="dot"></span>护盾</div>`;
     if (magnet > 0)  html += `<div class="pchip magnet"><span class="dot"></span>磁铁 ${Math.ceil(magnet/60)}s</div>`;
     if (scoreMult > 0) html += `<div class="pchip" style="border-color:rgba(255,216,77,.5)"><span class="dot" style="background:#ffd84d;box-shadow:0 0 8px #ffd84d"></span>×${scoreMultVal}分</div>`;
     if (boost > 0)   html += `<div class="pchip" style="border-color:rgba(127,216,255,.5)"><span class="dot" style="background:#7fd8ff;box-shadow:0 0 8px #7fd8ff"></span>加速</div>`;
+    if (html === lastBarHTML) return;   // 内容未变化不重写 DOM，避免连续吃金币时频繁重建
+    lastBarHTML = html;
     powerbar.innerHTML = html;
   }
 
@@ -147,6 +177,7 @@
 
   function jump() {
     if (state !== STATE.PLAY) return;
+    if (rotateHint && !rotateHint.classList.contains('hidden')) return;   // 提示层可见时冻结输入（防解冻瞬间凭空起跳）
     if (player.jumps < MAX_JUMPS) {
       player.vy = JUMP_V * (player.jumps === 0 ? 1 : 0.85);
       player.jumps++;
@@ -211,9 +242,17 @@
   // ------- Input -------
   function onInput(e) { if (e) e.preventDefault(); if (state === STATE.PLAY) jump(); }
   canvas.addEventListener('mousedown', onInput);
-  canvas.addEventListener('touchstart', onInput, { passive: false });
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) return;   // 忽略多指触摸，避免一次点击消耗两次跳跃
+    onInput(e);
+  }, { passive: false });
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); onInput(); }
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;   // 输入框聚焦时不拦截按键
+    if (e.code === 'Space' || e.code === 'ArrowUp') {
+      if (e.repeat) { e.preventDefault(); return; }   // 长按重复同样阻止默认（防按钮激活），避免瞬间耗尽二段跳
+      e.preventDefault(); onInput();
+    }
     if (e.code === 'Enter' && state !== STATE.PLAY) startGame();
   });
   document.getElementById('startBtn').addEventListener('click', startGame);
@@ -222,14 +261,28 @@
   // ------- Update -------
   function update() {
     if (state !== STATE.PLAY) { updateParticles(); return; }
+    // 竖屏提示层可见时冻结游戏：玩家无法操作，避免被危险墙推死
+    if (rotateHint && !rotateHint.classList.contains('hidden')) { updateParticles(); return; }
     playTime++;
     const worldMul = slowmo > 0 ? 0.55 : 1;
-    const boostPush = Math.min(cfg.boostPushMax, cfg.boostPushBase + playTime * cfg.boostPushGrow);
     speed = Math.min(SPEED_MAX, cfg.speed + playTime * cfg.speedGrow);
-    const effSpeed = speed * (boost > 0 ? cfg.boostSpeedMul : 1) * worldMul;
+    // 拾取加速三要素（推墙力度/时长/自身倍率）：默认渐近收敛——随时间平滑逼近上限、增长因子递减 → 0；
+    // 可经 config 的 boostEase=false（或 URL ?boostease=0）关闭，改回 base + t*grow 线性递增
+    let boostPush, boostTimeCap, boostMul;
+    if (cfg.boostEase) {
+      boostPush    = cfg.boostPushMax     - (cfg.boostPushMax     - cfg.boostPushBase)    * Math.exp(-cfg.boostEaseRate * playTime);
+      boostTimeCap = cfg.boostTimeMax     - (cfg.boostTimeMax     - cfg.boostTimeBase)    * Math.exp(-cfg.boostEaseRate * playTime);
+      boostMul     = cfg.boostSpeedMulMax - (cfg.boostSpeedMulMax - cfg.boostSpeedMul)    * Math.exp(-cfg.boostEaseRate * playTime);
+    } else {
+      boostPush    = Math.min(cfg.boostPushMax,     cfg.boostPushBase    + playTime * cfg.boostPushGrow);
+      boostTimeCap = Math.min(cfg.boostTimeMax,     cfg.boostTimeBase    + playTime * cfg.boostTimeGrow);
+      boostMul     = Math.min(cfg.boostSpeedMulMax, cfg.boostSpeedMul    + playTime * cfg.boostSpeedMulGrow);
+    }
+    const effSpeed = speed * (boost > 0 ? boostMul : 1) * worldMul;
     distance += effSpeed * 0.05;
     score = Math.floor(distance) + coinScore;
-    if (score !== lastScore) { scoreValEl.textContent = score; lastScore = score; }
+    // DOM 节流：每 4 帧同步一次分数，减少 HUD 重排
+    if (score !== lastScore && (playTime & 3) === 0) { scoreValEl.textContent = score; lastScore = score; }
 
     player.vy += GRAVITY;
     player.y += player.vy;
@@ -239,14 +292,23 @@
     }
     player.squash += (1 - player.squash) * 0.2;
     player.rot += player.onGround ? 0 : 0.18;
+    if (player.onGround) player.rot *= 0.82;   // 落地后旋转平滑回正，避免累积
     if (player.hitFlash > 0) player.hitFlash--;
 
-    if (boost > 0) boost -= cfg.boostDecay;
+    if (boost > 0) { boost -= cfg.boostDecay; if (boost <= 0) { boost = 0; updatePowerbar(); } }
     if (magnet > 0) { magnet--; if (magnet === 0) updatePowerbar(); }
     if (scoreMult > 0) { scoreMult--; if (scoreMult === 0) { scoreMultVal = 1; updatePowerbar(); } }
     if (slowmo > 0) slowmo--;
 
-    const wallSpeed = Math.min(cfg.wallMax, cfg.wallStart + playTime * (cfg.wallGrow + playTime * cfg.wallGrow2));
+    // 危险墙速度：默认渐近收敛——增长因子 (wallMax - 当前速度) 随时间递减 → 0，速度平滑逼近上限；
+    // 可经 config 的 wallEase=false（或 URL ?wallease=0）关闭，改回 wallGrow/wallGrow2 线性增长
+    let wallSpeed;
+    if (cfg.wallEase) {
+      wallSpeed = cfg.wallMax - (cfg.wallMax - cfg.wallStart) * Math.exp(-cfg.wallEaseRate * playTime);
+      if (cfg.wallMax - wallSpeed < 0.02) wallSpeed = cfg.wallMax;   // 几乎到达上限即锁定，增长因子归 0
+    } else {
+      wallSpeed = Math.min(cfg.wallMax, cfg.wallStart + playTime * (cfg.wallGrow + playTime * cfg.wallGrow2));
+    }
     wall.x += wallSpeed * worldMul - (boost > 0 ? boostPush : 0);
     if (wall.x < -80) wall.x = -80;
     if (wall.x + 18 >= player.x) { gameOver('被危险墙推到左边出界了！'); return; }
@@ -313,7 +375,7 @@
         c.taken = true;
         const gain = 10 * scoreMultVal;
         coinScore += gain;
-        boost = Math.max(boost, Math.min(cfg.boostTimeMax, cfg.boostTimeBase + playTime * cfg.boostTimeGrow));
+        boost = Math.max(boost, Math.min(cfg.boostTimeMax, boostTimeCap));
         updatePowerbar();
         for (let i = 0; i < 14; i++) addParticle({ x: c.x, y: c.y, vx: rand(-5,5), vy: rand(-6,2), life: 28, max: 28, c: '#ffd84d', size: rand(2,5) });
       }
@@ -334,12 +396,13 @@
   }
 
   function updateParticles() {
-    for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.life--; }
+    for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.life--; p.a = p.life / (p.max || p.life || 1); }
     siftInPlace(particles, p => p.life > 0);
   }
 
   // 粒子分组复用对象（避免每帧创建新对象触发 GC）
   const _pgroups = {}, _pgKeys = [];
+  const _abuckets = []; for (let i = 0; i < 8; i++) _abuckets.push([]);   // alpha 8 档分桶复用
 
   // ------- Render -------
   function roundRect(x, y, w, h, r) {
@@ -353,7 +416,8 @@
   }
 
   function draw() {
-    ctx.fillStyle = bgSky; ctx.fillRect(0, 0, W, H);
+    if (bgCanvas) ctx.drawImage(bgCanvas, 0, 0, W, H);   // 5 参数显式目标尺寸，避免 DPR 放大
+    else { ctx.fillStyle = '#171736'; ctx.fillRect(0, 0, W, H); }
     if (slowmo > 0) { ctx.fillStyle = 'rgba(120,255,200,0.06)'; ctx.fillRect(0,0,W,H); }
 
     // 星点（位置固定，批量单次 fill）
@@ -379,7 +443,6 @@
       ctx.ellipse(cl.x+22*cl.s, cl.y+3*cl.s, 22*cl.s, 12*cl.s, 0, 0, Math.PI*2);
       ctx.fill();
     }
-    ctx.fillStyle = bgGround; ctx.fillRect(0, groundY, W, H - groundY);
     ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
     ctx.strokeStyle = 'rgba(127,216,255,.18)'; ctx.lineWidth = 1;
@@ -408,10 +471,18 @@
       const arr = _pgroups[k];
       if (arr.length === 0) continue;
       ctx.fillStyle = k;
-      for (let j = 0; j < arr.length; j++) {
-        const p = arr[j];
-        ctx.globalAlpha = p.life / p.max;
-        ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+      for (let b = 0; b < 8; b++) _abuckets[b].length = 0;
+      for (let j = 0; j < arr.length; j++) _abuckets[Math.min(7, (arr[j].a * 8) | 0)].push(arr[j]);
+      for (let b = 7; b >= 0; b--) {
+        const ba = _abuckets[b];
+        if (ba.length === 0) continue;
+        ctx.globalAlpha = (b + 0.5) / 8;   // 档位中值，寿命末段淡出更平滑
+        ctx.beginPath();
+        for (let j = 0; j < ba.length; j++) {
+          const p = ba[j];
+          ctx.rect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+        }
+        ctx.fill();
       }
     }
     ctx.globalAlpha = 1;
@@ -521,15 +592,8 @@
 
   function drawWall() {
     const wx = wall.x, ww = 50;
-    ctx.fillStyle = 'rgba(255,60,60,.2)'; ctx.fillRect(wx, 0, ww * 0.3, groundY);
-    ctx.fillStyle = 'rgba(255,70,70,.85)'; ctx.fillRect(wx + ww * 0.3, 0, ww * 0.4, groundY);
-    ctx.fillStyle = 'rgba(255,120,120,.95)'; ctx.fillRect(wx + ww * 0.7, 0, ww * 0.3, groundY);
-    ctx.fillStyle = '#ff4d4d';
-    ctx.beginPath();
-    for (let y = 0; y < groundY; y += 18) {
-      ctx.moveTo(wx + ww, y); ctx.lineTo(wx + ww + 12, y + 9); ctx.lineTo(wx + ww, y + 18);
-    }
-    ctx.fill();
+    if (wallImg) ctx.drawImage(wallImg, wx, 0, 66, wallImgH);
+    // 高光描边带闪烁动画，单独画（仅一条线，成本可忽略）
     ctx.strokeStyle = `rgba(255,200,200,${0.4 + Math.sin(playTime*0.2)*0.3})`;
     ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(wx + ww, 0); ctx.lineTo(wx + ww, groundY); ctx.stroke();
   }
@@ -591,6 +655,23 @@
   applyConfig();    // 解析 URL 自定义参数
   GRAVITY = cfg.gravity; JUMP_V = -cfg.jump; MAX_JUMPS = cfg.jumps; SPEED_MAX = cfg.speedMax;
   initSkinPicker(); // 初始化开始界面皮肤选择器
+
+  // 竖屏提示：竖屏时显示“建议横屏”，可点按钮关闭继续竖屏玩
+  const rotateHint = document.getElementById('rotateHint');
+  if (rotateHint) {
+    const closeBtn = document.getElementById('rotateCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', () => {
+      rotateHint.classList.add('closed');
+      rotateHint.classList.add('hidden');
+    });
+    const updateRotateHint = () => {
+      if (rotateHint.classList.contains('closed')) return;
+      rotateHint.classList.toggle('hidden', window.innerWidth >= window.innerHeight);
+    };
+    window.addEventListener('resize', updateRotateHint);
+    updateRotateHint();
+  }
+
   reset();
   document.getElementById('best').querySelector('.val').textContent = best;
   // 若 URL 带 skin 参数，直接进入游戏（跳过开始界面），图片异步加载完成后自动切换
