@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>CubeRunner · 方块跑酷</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="stat" id="score"><div class="label">SCORE</div><div class="val">0</div></div>
+    <div class="stat" id="best"><div class="label">BEST</div><div class="val">0</div></div>
+  </div>
+
+  <div id="powerbar"></div>
+  <div id="floatMsgs"></div>
+
+  <!-- Start screen -->
+  <div class="overlay" id="startScreen">
+    <div class="title">CUBE RUNNER</div>
+    <div class="sub">方块一直向前奔跑，点击或按空格跳跃。跳起收集金色方块得分并短暂加速，路上还有护盾、磁铁、神秘方块等道具。撞到红色尖刺障碍即失败，橙色软块只会减速震退。小心身后持续推进的红色危险墙——被推到左边出界就失败了！</div>
+    <div class="keys">
+      <span class="key">点击 / 空格 = 跳跃</span>
+      <span class="key">空中可二段跳</span>
+      <span class="key">金色方块 = 加分 + 加速</span>
+      <span class="key">道具：护盾 / 磁铁 / 神秘方块</span>
+    </div>
+
+    <!-- 皮肤选择 -->
+    <div class="skin-section">
+      <div class="skin-label">选择主角皮肤</div>
+      <div class="skin-grid" id="skinGrid"></div>
+      <div class="skin-custom-row">
+        <input type="text" id="skinUrlInput" placeholder="或粘贴图片 URL 自定义皮肤" />
+        <button id="skinUrlBtn">应用</button>
+      </div>
+      <div class="skin-tip">点击上方方块选择内置皮肤，或粘贴图片链接自定义。设置会同步到网址参数，便于分享。</div>
+    </div>
+
+    <button class="btn" id="startBtn">开始游戏</button>
+  </div>
+
+  <!-- Game over screen -->
+  <div class="overlay hidden" id="overScreen">
+    <div class="title" id="overTitle" style="font-size:clamp(34px,7vw,64px)">GAME OVER</div>
+    <div class="sub" id="overReason">你失败了</div>
+    <div id="finalScore">0</div>
+    <div id="finalBest">最高分 0</div>
+    <button class="btn" id="restartBtn">再来一局</button>
+  </div>
+
+  <div class="hint">点击屏幕 / 空格 跳跃</div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/skins.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
