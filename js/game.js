@@ -617,6 +617,14 @@
   function loop() { update(); draw(); requestAnimationFrame(loop); }
 
   // ======= 开始界面皮肤选择器 =======
+  // 显示当前生效皮肤（内置名/自定义图片），让皮肤状态透明可感知
+  function updateSkinCurrent() {
+    const el = document.getElementById('skinCurrent');
+    if (!el) return;
+    if (cfg.skin && cfg.skin.startsWith('url:')) el.textContent = '当前皮肤：自定义图片';
+    else if (cfg.skin && Object.prototype.hasOwnProperty.call(BUILTIN_SKINS, cfg.skin)) el.textContent = '当前皮肤：' + BUILTIN_SKINS[cfg.skin];
+    else el.textContent = '当前皮肤：默认蓝';
+  }
   function initSkinPicker() {
     const grid = document.getElementById('skinGrid');
     if (!grid) return;
@@ -641,6 +649,7 @@
         chip.classList.add('active');
         document.getElementById('skinUrlInput').value = '';
         updateUrlParam('skin', k);
+        updateSkinCurrent();
       });
       grid.appendChild(chip);
     }
@@ -660,6 +669,7 @@
           if (chip) chip.classList.add('active');
           updateUrlParam('skin', val);
           floatMsg('皮肤已应用', player.x + player.w/2, 100, '#7fd8ff');
+          updateSkinCurrent();
           urlInput.blur();
           return;
         }
@@ -668,10 +678,12 @@
         document.querySelectorAll('.skin-chip').forEach(el => el.classList.remove('active'));
         updateUrlParam('skin', val);
         floatMsg('皮肤已应用', player.x + player.w/2, 100, '#7fd8ff');
+        updateSkinCurrent();
         urlInput.blur();   // 收起软键盘，避免遮挡游戏区域
       });
       urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') urlBtn.click(); });
     }
+    updateSkinCurrent();   // 按 URL 参数/默认显示当前皮肤
   }
 
   // 更新 URL 参数（不刷新页面，便于分享当前配置）
