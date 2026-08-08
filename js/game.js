@@ -260,12 +260,10 @@
   // 统一用 Pointer Events：鼠标/触摸/笔一次物理输入只触发一次 jump，无兼容事件双跳；
   // touch-action:none 已确保无 300ms 延迟，快速连跳每次点击都会响应
   function onInput(e) { if (e) e.preventDefault(); if (state === STATE.PLAY) jump(); }
-  let fullscreenTried = false;
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'touch' && !e.isPrimary) return;   // 多指触控只响应主触点，避免误触消耗二段跳
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 忽略右键/中键
-    onInput(e);   // 先响应跳跃，全屏请求放其后，避免任何异常影响输入
-    if (!fullscreenTried) { fullscreenTried = true; requestFullscreen(); }   // URL 自动启动等无手势场景：首次点击补请求全屏
+    onInput(e);
   });
   window.addEventListener('keydown', (e) => {
     const t = e.target;
@@ -699,6 +697,22 @@
       urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') urlBtn.click(); });
     }
     updateSkinCurrent();   // 按 URL 参数/默认显示当前皮肤
+  }
+
+  // 全屏引导弹窗（触屏设备）：进入页面后显示"点击任意位置进入全屏"，点击即全屏并隐藏；
+  // 退出全屏后重新显示（强制全屏语义）。iOS Safari 无 Fullscreen API 时保持隐藏（静默降级）。
+  const fsHint = document.getElementById('fsHint');
+  const canFullscreen = typeof document.documentElement.requestFullscreen === 'function';
+  const isTouchDevice = navigator.maxTouchPoints > 0 || /Android|iPhone|iPad|iPod|Mobile|WebView/i.test(navigator.userAgent || '');
+  if (fsHint && isTouchDevice && canFullscreen) {
+    const enterFs = () => { requestFullscreen(); fsHint.classList.add('hidden'); };
+    fsHint.addEventListener('pointerdown', enterFs);
+    fsHint.addEventListener('touchstart', enterFs, { passive: true });
+    document.addEventListener('fullscreenchange', () => {
+      // 仅开始界面（未开始游戏）时重新引导；游戏进行中退出全屏不打断（重开时 startGame 会自动回全屏）
+      if (!document.fullscreenElement && state === STATE.START) fsHint.classList.remove('hidden');
+    });
+    fsHint.classList.remove('hidden');   // 显示引导弹窗（拦截首次点击，不影响开始按钮的 click）
   }
 
   // 更新 URL 参数（不刷新页面，便于分享当前配置）
