@@ -120,6 +120,7 @@
   let skinCache = null, skinCacheKey = '', skinCacheFrame = -999;
   const SKIN_REFRESH = 4;   // 每 4 帧刷新一次皮肤动画（动画降频 75%，肉眼几乎无差）
   const scoreValEl = document.getElementById('score').querySelector('.val');  // 缓存，避免每帧查询
+  const hintEl = document.querySelector('.hint');   // 底部跳跃提示（仅 PLAY 显示，避免开始界面穿透命中皮肤输入框弹键盘）
   const powerbar = document.getElementById('powerbar');  // 显式缓存道具栏元素
   let lastScore = -1;
   let lastBarHTML = '';
@@ -169,10 +170,14 @@
     state = STATE.PLAY;
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('overScreen').classList.add('hidden');
+    if (hintEl) hintEl.classList.remove('hidden');   // 游戏进行中显示底部跳跃提示
+    const urlInp = document.getElementById('skinUrlInput');
+    if (urlInp) urlInp.blur();   // 强制输入框失焦，防止开始游戏时软键盘弹出
   }
 
   function gameOver(reason) {
     state = STATE.OVER;
+    if (hintEl) hintEl.classList.add('hidden');   // 结束界面隐藏底部提示，避免与 UI 重叠
     if (score > best) { best = score; try { localStorage.setItem('cubeRunnerBest', best); } catch (e) {} }
     document.getElementById('overReason').textContent = reason;
     document.getElementById('finalScore').textContent = score;
@@ -507,14 +512,14 @@
       ctx.fillRect(player.x - 30, player.y, 28, player.h);
     }
 
-    // 皮肤状态诊断（左上角小字，帮助排查自定义皮肤问题；调试完成后可移除）
-    ctx.fillStyle = 'rgba(255,255,255,.6)';
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    // 皮肤状态诊断（顶部居中，帮助排查自定义皮肤问题；调试完成后可移除）
+    ctx.fillStyle = 'rgba(255,255,255,.75)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     if (cfg.skin && cfg.skin.startsWith('url:')) {
-      ctx.fillText(skinReady ? '皮肤:自定义' : (skinFailed ? '皮肤:加载失败' : '皮肤:加载中…'), 10, 42);
+      ctx.fillText(skinReady ? '皮肤:自定义' : (skinFailed ? '皮肤:加载失败' : '皮肤:加载中…'), W / 2, 10);
     } else {
-      ctx.fillText('皮肤:' + (cfg.skin || '默认'), 10, 42);
+      ctx.fillText('皮肤:' + (cfg.skin || '默认'), W / 2, 10);
     }
   }
 
