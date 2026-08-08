@@ -506,6 +506,16 @@
       ctx.fillStyle = `rgba(127,216,255,${boost/40})`;
       ctx.fillRect(player.x - 30, player.y, 28, player.h);
     }
+
+    // 皮肤状态诊断（左上角小字，帮助排查自定义皮肤问题；调试完成后可移除）
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    if (cfg.skin && cfg.skin.startsWith('url:')) {
+      ctx.fillText(skinReady ? '皮肤:自定义' : (skinFailed ? '皮肤:加载失败' : '皮肤:加载中…'), 10, 42);
+    } else {
+      ctx.fillText('皮肤:' + (cfg.skin || '默认'), 10, 42);
+    }
   }
 
   function drawPlayer() {

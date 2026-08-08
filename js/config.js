@@ -32,6 +32,7 @@ window.cfg = {
 window.skinImg = null;
 window.skinReady = false;
 window.skinCanvas = null;   // 离屏缓存（预缩放后的小 canvas，避免每帧缩放大图）
+window.skinFailed = false;  // 皮肤图片加载失败标志（供游戏内诊断显示）
 
 // 从 URL 查询参数读取自定义值并覆盖 cfg
 window.applyConfig = function () {
@@ -79,17 +80,20 @@ window.applyConfig = function () {
 let skinReq = 0;
 window.loadSkin = function (url) {
   const req = ++skinReq;
+  skinFailed = false;   // 重新加载时先清除失败标志（新请求在途视为"加载中"）
   const img = new Image();   // 局部引用，回调不依赖被后续请求替换的全局 skinImg
   img.referrerPolicy = 'no-referrer';   // 绕过图床的 Referer 防盗链（白名单式防盗链仍可能失败）
   img.onload = () => {
     if (req !== skinReq) return;   // 期间有更新的皮肤请求，丢弃过期回调
     if (!img.naturalWidth) {       // 极少数解码异常（onload 但尺寸为 0）：按失败处理
       skinReady = false; skinImg = null; skinCanvas = null;
+      skinFailed = true;
       if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
       return;
     }
     skinImg = img;
     skinReady = true;
+    skinFailed = false;
     // 预渲染到离屏 canvas（2倍尺寸保证清晰），避免每帧缩放大图
     const sz = 88;
     skinCanvas = document.createElement('canvas');
@@ -103,6 +107,7 @@ window.loadSkin = function (url) {
   img.onerror = () => {
     if (req !== skinReq) return;
     skinReady = false; skinImg = null; skinCanvas = null;
+    skinFailed = true;
     if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
   };
   img.src = url;
