@@ -152,7 +152,16 @@
     updatePowerbar();
   }
 
+  // 移动端全屏：隐藏地址栏/浏览器 UI 进入沉浸模式（iOS Safari 无 Fullscreen API，静默降级）
+  function requestFullscreen() {
+    const el = document.documentElement;
+    if (typeof el.requestFullscreen === 'function' && !document.fullscreenElement) {
+      el.requestFullscreen().catch(() => {});
+    }
+  }
+
   function startGame() {
+    requestFullscreen();   // 移动端进入全屏沉浸模式（不支持时静默降级）
     reset();
     state = STATE.PLAY;
     document.getElementById('startScreen').classList.add('hidden');
@@ -240,12 +249,16 @@
   }
 
   // ------- Input -------
+  // 统一用 Pointer Events：鼠标/触摸/笔一次物理输入只触发一次 jump，无兼容事件双跳；
+  // touch-action:none 已确保无 300ms 延迟，快速连跳每次点击都会响应
   function onInput(e) { if (e) e.preventDefault(); if (state === STATE.PLAY) jump(); }
-  canvas.addEventListener('mousedown', onInput);
-  canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 1) return;   // 忽略多指触摸，避免一次点击消耗两次跳跃
+  let fullscreenTried = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch' && !e.isPrimary) return;   // 多指触控只响应主触点，避免误触消耗二段跳
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // 忽略右键/中键
+    if (!fullscreenTried) { fullscreenTried = true; requestFullscreen(); }   // URL 自动启动等无手势场景：首次点击补请求全屏
     onInput(e);
-  }, { passive: false });
+  });
   window.addEventListener('keydown', (e) => {
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;   // 输入框聚焦时不拦截按键
@@ -253,7 +266,7 @@
       if (e.repeat) { e.preventDefault(); return; }   // 长按重复同样阻止默认（防按钮激活），避免瞬间耗尽二段跳
       e.preventDefault(); onInput();
     }
-    if (e.code === 'Enter' && state !== STATE.PLAY) startGame();
+    if (e.code === 'Enter' && state !== STATE.PLAY) { e.preventDefault(); startGame(); }   // 阻止按钮默认激活导致二次 startGame
   });
   document.getElementById('startBtn').addEventListener('click', startGame);
   document.getElementById('restartBtn').addEventListener('click', startGame);
