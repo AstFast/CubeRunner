@@ -72,11 +72,12 @@ window.applyConfig = function () {
 };
 
 // 加载皮肤图片（自适应缩放到玩家方块尺寸）
-// 优先带 crossOrigin（GitHub Pages 等需 CORS 场景）；图床不支持 CORS 时回退普通加载重试一次
-// （本项目只用 drawImage 显示、无 getImageData，canvas 污染无影响）
-window.loadSkin = function (url, noCors) {
+// 不设 crossOrigin：本项目仅 drawImage 显示、无 getImageData/toDataURL，跨域图片无需 CORS 即可显示；
+// 设置 crossOrigin 反而会让不支持 CORS 的图床（如 img.cdn1.vip）直接加载失败。
+// 警告：跨域图会使 canvas 污染，未来若加截图/分享导出（toDataURL/getImageData）会抛 SecurityError。
+window.loadSkin = function (url) {
   skinImg = new Image();
-  if (!noCors) skinImg.crossOrigin = 'anonymous';
+  skinImg.referrerPolicy = 'no-referrer';   // 绕过图床的 Referer 防盗链（白名单式防盗链仍可能失败）
   skinImg.onload = () => {
     skinReady = true;
     // 预渲染到离屏 canvas（2倍尺寸保证清晰），避免每帧缩放大图
@@ -90,7 +91,6 @@ window.loadSkin = function (url, noCors) {
     sc.drawImage(skinImg, (sz - dw) / 2, (sz - dh) / 2, dw, dh);
   };
   skinImg.onerror = () => {
-    if (!noCors) { loadSkin(url, true); return; }   // CORS 失败 → 无 CORS 重试一次
     skinReady = false; skinImg = null; skinCanvas = null;
     if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
   };
