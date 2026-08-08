@@ -153,11 +153,14 @@
   }
 
   // 移动端全屏：隐藏地址栏/浏览器 UI 进入沉浸模式（iOS Safari 无 Fullscreen API，静默降级）
+  // try/catch 双保险：全屏请求 pending/被拒时浏览器可能同步抛异常，绝不能中断输入处理
   function requestFullscreen() {
     const el = document.documentElement;
-    if (typeof el.requestFullscreen === 'function' && !document.fullscreenElement) {
-      el.requestFullscreen().catch(() => {});
-    }
+    if (typeof el.requestFullscreen !== 'function' || document.fullscreenElement) return;
+    try {
+      const p = el.requestFullscreen();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) { /* pending 或权限拒绝：忽略 */ }
   }
 
   function startGame() {
@@ -256,8 +259,8 @@
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'touch' && !e.isPrimary) return;   // 多指触控只响应主触点，避免误触消耗二段跳
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 忽略右键/中键
+    onInput(e);   // 先响应跳跃，全屏请求放其后，避免任何异常影响输入
     if (!fullscreenTried) { fullscreenTried = true; requestFullscreen(); }   // URL 自动启动等无手势场景：首次点击补请求全屏
-    onInput(e);
   });
   window.addEventListener('keydown', (e) => {
     const t = e.target;
@@ -652,6 +655,7 @@
         document.querySelectorAll('.skin-chip').forEach(el => el.classList.remove('active'));
         updateUrlParam('skin', url);
         floatMsg('皮肤已应用', player.x + player.w/2, 100, '#7fd8ff');
+        urlInput.blur();   // 收起软键盘，避免遮挡游戏区域
       });
       urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') urlBtn.click(); });
     }

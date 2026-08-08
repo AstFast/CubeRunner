@@ -72,9 +72,11 @@ window.applyConfig = function () {
 };
 
 // 加载皮肤图片（自适应缩放到玩家方块尺寸）
-window.loadSkin = function (url) {
+// 优先带 crossOrigin（GitHub Pages 等需 CORS 场景）；图床不支持 CORS 时回退普通加载重试一次
+// （本项目只用 drawImage 显示、无 getImageData，canvas 污染无影响）
+window.loadSkin = function (url, noCors) {
   skinImg = new Image();
-  skinImg.crossOrigin = 'anonymous';   // 便于 GitHub Pages 跨域图片
+  if (!noCors) skinImg.crossOrigin = 'anonymous';
   skinImg.onload = () => {
     skinReady = true;
     // 预渲染到离屏 canvas（2倍尺寸保证清晰），避免每帧缩放大图
@@ -88,6 +90,7 @@ window.loadSkin = function (url) {
     sc.drawImage(skinImg, (sz - dw) / 2, (sz - dh) / 2, dw, dh);
   };
   skinImg.onerror = () => {
+    if (!noCors) { loadSkin(url, true); return; }   // CORS 失败 → 无 CORS 重试一次
     skinReady = false; skinImg = null; skinCanvas = null;
     if (window.floatMsg) window.floatMsg('皮肤加载失败，使用默认', 120, 80, '#ff8a3a');
   };
